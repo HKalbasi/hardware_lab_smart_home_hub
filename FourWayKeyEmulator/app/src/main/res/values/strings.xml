@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Emulator</string>
+    <string name="action_settings">Settings</string>
+    <!-- Strings used for fragments for navigation -->
+    <string name="first_fragment_label">شبیه ساز</string>
+    <string name="OFF">خاموش</string>
+    <string name="ON">روشن</string>
+    <string name="close">بسته</string>
+    <string name="open">باز</string>
+</resources>
