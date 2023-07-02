@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google'
 import styles from '@/styles/Home.module.css'
 import { useEffect, useState } from 'react'
 import { sendCommand, subscribe } from './api/websocket'
+import { useRouter } from 'next/router'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -12,7 +13,7 @@ type PaneArgs = {
   onClick?: () => any | undefined,
 };
 
-const Pane = ({ text, onClick }: PaneArgs) => {
+export const Pane = ({ text, onClick }: PaneArgs) => {
   return (
     <div style={{ flexGrow: 1, padding: '1rem' }}>
       <div 
@@ -32,7 +33,7 @@ type SplitArgs = {
   children: any,
 };
 
-const Split = ({ direction, children }: SplitArgs) => {
+export const Split = ({ direction, children }: SplitArgs) => {
   return (
     <div style={{ flexGrow: 1, display: 'flex', flexDirection: direction }}>
       {children}
@@ -41,6 +42,7 @@ const Split = ({ direction, children }: SplitArgs) => {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [state, setState]: [any, any] = useState(undefined);
   useEffect(() => {
     subscribe((x: any) => setState(x));
@@ -57,15 +59,10 @@ export default function Home() {
         {!state && <Pane text='ما متصل نیستیم. چند لحظه صبر کنید.' />}
         {state && <Split direction='row'>
           <Split direction='column'>
-            <Pane text={`دمای اتاق: ${state.temperature} درجه`}/>
-            <Split direction='row'>
-              <Pane text={`کولر: ${state.cooler ? 'روشن' : 'خاموش' }`} onClick={() => sendCommand({ object: 'cooler', enable: !state.cooler })} />
-              <Pane text={`بخاری: ${state.cooler ? 'روشن' : 'خاموش' }`} />
-            </Split>
-            <Pane text='لامپ: روشن' />
+            {Object.keys(state.devices).map((x) => <Pane key={x} text={x} onClick={() => router.push(`/locations/${x}`)} />)}
           </Split>
           <Split direction='column'>
-            <Pane text='دوربین ها' />
+            <Pane text='قواعد' onClick={() => router.push(`/rules`)} />
             <Split direction='row'>
               <Pane text={`هاب متصل ${state.hub ? 'است' : 'نیست' }`} />
               <Pane text='تنظیمات' />

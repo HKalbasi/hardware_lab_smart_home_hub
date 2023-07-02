@@ -1,6 +1,7 @@
 
 
 let ws: WebSocket | undefined;
+let currentData: any;
 
 const send = (data: any) => {
   ws?.send(JSON.stringify(data));
@@ -20,6 +21,7 @@ export const subscribe = (f: any) => {
     };
     ws.onmessage = (msg: MessageEvent) => {
       const data = JSON.parse(msg.data);
+      currentData = data;
       subscribers.forEach((f) => f(data));
     };
     ws.onclose = () => {
@@ -27,6 +29,7 @@ export const subscribe = (f: any) => {
       setTimeout(() => window.location.reload(), 1000);
     };
   }
+  f(currentData);
   subscribers.push(f);
   return () => {
     subscribers = subscribers.filter((x) => x !== f)
