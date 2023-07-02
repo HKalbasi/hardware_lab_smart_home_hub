@@ -1,10 +1,11 @@
 use std::{
     cmp,
+    collections::HashMap,
     io::{BufRead, BufReader},
     net::TcpStream,
     process::{Command, Stdio},
     thread::sleep,
-    time::{Duration, SystemTime}, collections::HashMap,
+    time::{Duration, SystemTime}, mem,
 };
 
 use serde::{Deserialize, Serialize};
@@ -23,13 +24,27 @@ struct State {
     rules: Vec<(RuleState, Job)>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+enum Operator {
+    Le,
+    Ge,
+    Eq,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 enum RuleState {
     Timer {
         next: SystemTime,
         interval: Duration,
         count: usize,
-    }
+    },
+    Sensor {
+        operator: Operator,
+        location: String,
+        device: String,
+        value: i32,
+        is_sat: bool,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -38,8 +53,14 @@ enum RuleState {
 enum Rule {
     Timer {
         interval: Duration,
-        count: usize,    
-    }
+        count: usize,
+    },
+    Sensor {
+        operator: Operator,
+        location: String,
+        device: String,
+        value: i32,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -59,24 +80,53 @@ impl Job {
 
 impl State {
     fn check_rules(&mut self) {
-        self.rules.retain(|x| {
-            match x.0 {
-                RuleState::Timer { count, .. } => {
-                    count != 0
-                },
-            }
+        let mut rules = mem::take(&mut self.rules);
+        rules.retain(|x| match x.0 {
+            RuleState::Timer { count, .. } => count != 0,
+            RuleState::Sensor { .. } => true,
         });
-        for (rule, job) in &mut self.rules {
+        for (rule, job) in &mut rules {
             match rule {
-                RuleState::Timer { next, interval, count } => {
+                RuleState::Timer {
+                    next,
+                    interval,
+                    count,
+                } => {
                     if *next < SystemTime::now() {
                         *next = *next + *interval;
                         job.do_it();
                         *count -= 1;
                     }
-                },
+                }
+                RuleState::Sensor {
+                    operator,
+                    location,
+                    device,
+                    value,
+                    is_sat,
+                } => {
+                    let condition_result = self.check_condition(&location, &device, *value, *operator).unwrap_or(false);
+                    if *is_sat != condition_result {
+                        *is_sat = condition_result;
+                        if *is_sat {
+                            job.do_it();
+                        }
+                    }
+                }
             }
         }
+        self.rules = rules;
+    }
+
+    fn check_condition(&self, location: &String, device: &String, value: i32, operator: Operator) -> Option<bool> {
+        let location = self.devices.get(location)?;
+        let device = location.iter().find(|x| x.name == *device)?;
+        let their_value: i32 = device.value.parse().ok()?;
+        Some(match operator {
+            Operator::Le => their_value <= value,
+            Operator::Ge => their_value >= value,
+            Operator::Eq => their_value == value,
+        })
     }
 }
 
@@ -92,10 +142,8 @@ enum SendMessage<'a> {
 #[serde(tag = "kind")]
 #[serde(rename_all = "snake_case")]
 enum ReceiveMessage {
-    NewRule {
-        rule: Rule,
-        job: Job,
-    }
+    NewRule { rule: Rule, job: Job },
+    DeleteRule { index: usize },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -171,7 +219,11 @@ fn main() {
         match device_event {
             DeviceEvent::HeartBeat => (),
             DeviceEvent::NewDevice { value } => {
-                state.devices.entry(value.location.clone()).or_default().push(value);
+                state
+                    .devices
+                    .entry(value.location.clone())
+                    .or_default()
+                    .push(value);
             }
             DeviceEvent::UpdateDevice { value } => {
                 for d in state.devices.get_mut(&value.location).unwrap().iter_mut() {
@@ -179,7 +231,7 @@ fn main() {
                         d.value = value.value.clone();
                     }
                 }
-            },
+            }
         }
         state.check_rules();
         connection.send(SendMessage::Update { state: &state });
@@ -187,11 +239,28 @@ fn main() {
         match msg {
             ReceiveMessage::NewRule { rule, job } => {
                 let rule_state = match rule {
-                    Rule::Timer { interval, count } => {
-                        RuleState::Timer { next: SystemTime::now() + interval, interval, count }
+                    Rule::Timer { interval, count } => RuleState::Timer {
+                        next: SystemTime::now() + interval,
+                        interval,
+                        count,
+                    },
+                    Rule::Sensor {
+                        operator,
+                        location,
+                        device,
+                        value,
+                    } => RuleState::Sensor {
+                        operator,
+                        location,
+                        device,
+                        value,
+                        is_sat: false,
                     },
                 };
                 state.rules.push((rule_state, job));
+            }
+            ReceiveMessage::DeleteRule { index } => {
+                state.rules.remove(index);
             },
         }
     }

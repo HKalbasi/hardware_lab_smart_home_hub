@@ -6,11 +6,53 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { subscribe, sendCommand } from './api/websocket'
 import { Pane, Split } from '.'
+import Select from "react-select";
 
 const NewRuleAdder = () => {
     const [rule, setRule]: [any, any] = useState({ type: 'timer', interval: { secs: 1, nanos: 0 }, count: 20 });
     const [job, setJob]: [any, any] = useState({ type: 'beep' });
+    const typeOptions = [
+        { value: 'timer', label: 'زمانی' },
+        { value: 'sensor', label: 'سنسور' },
+    ];
+    const [state, setState]: [any, any] = useState(undefined);
+    useEffect(() => {
+      subscribe((x: any) => setState(x));
+    });
     return <>
+        <h2>قاعده جدید</h2>
+        محرک:
+        <Select isRtl options={typeOptions} defaultValue={typeOptions[0]} value={typeOptions.find((x) => x.value === rule.type)} onChange={(x) => {
+            const type = x!.value;
+            if (type === 'timer') {
+                setRule({ type, interval: { secs: 1, nanos: 0 }, count: 20 });
+            }
+            if (type === 'sensor') {
+                const location = Object.keys(state?.devices)[0];
+                if (location) {
+                    const device = state.devices[location][0]?.type;
+                    if (device) {
+                        setRule({ type, operator: 'Le', location, device, value: 200 });    
+                    }
+                }
+            }
+        }} />
+        <br/>
+        {rule.type === 'timer' && <>
+            <input type='number' value={rule.interval.secs} onChange={(e) => {
+                const ruleClone = { ...rule };
+                ruleClone.interval.secs = Number(e.target.value);
+                setRule(ruleClone);
+            }}/>
+        </>}
+        {rule.type === 'sensor' && <>
+            <input type='number' value={rule.value} onChange={(e) => {
+                const ruleClone = { ...rule };
+                ruleClone.value = Number(e.target.value);
+                setRule(ruleClone);
+            }}/>
+        </>}
+        <br/>
         <button onClick={() => sendCommand({ kind: 'new_rule', rule, job })}>بساز</button>
     </>;
 };
@@ -33,9 +75,10 @@ export default function Home() {
                 {state && <div dir="rtl" style={{ flexGrow: 1, background: 'white', color: 'black', padding: '2rem' }}>
                     <h1>قواعد</h1>   
                     <div>
-                        {state.rules.map((x: any) => (
+                        {state.rules.map((x: any, i: number) => (
                             <div key={x}>
                                 {JSON.stringify(x)}
+                                <button onClick={() => sendCommand({ kind: 'delete_rule', index: i })}>حذف</button>
                             </div>
                         ))}
                     </div>

@@ -21,7 +21,7 @@ class DeviceDetectorThread(threading.Thread):
         r = json.loads(r.text.replace('=', ':'))
         for d in r["sensors"]:
             d["location"] = r["room"]
-            d["type"] = "sensor"
+            d["kind"] = "sensor"
             d["ip"] = "192.168.43.1"
             d["value"] = ""
             with lock:
@@ -29,7 +29,7 @@ class DeviceDetectorThread(threading.Thread):
             send({ "type": "new_device", "value": d })
         for d in r["actuators"]:
             d["location"] = r["room"]
-            d["type"] = "actuator"
+            d["kind"] = "actuator"
             d["ip"] = "192.168.43.1"
             d["value"] = ""
             with lock:
