@@ -6,7 +6,7 @@ import { Inter } from 'next/font/google'
 import styles from '@/styles/Home.module.css'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
-import { subscribe } from '../api/websocket'
+import { subscribe, sendCommand } from '../api/websocket'
 import { Pane, Split } from '..'
 
 export default function Home() {
@@ -32,7 +32,23 @@ export default function Home() {
                 <Pane text={name} />
                 <Split direction='row'>
                     {state.devices[name].map((x) => (
-                        <Pane key={x.type} text={`${x.type}: ${x.value}`}/>
+                        <Pane key={x.type} text={`${x.type}: ${x.value}`} onClick={() => {
+                            if (x.kind != 'actuator') {
+                                return;
+                            }
+                            if (x.value === 'on') {
+                                sendCommand({ kind: 'send_act', location: name, device: x.type, value: 'off' });
+                            } 
+                            if (x.value === 'off') {
+                                sendCommand({ kind: 'send_act', location: name, device: x.type, value: 'on' });    
+                            }
+                            if (x.value === 'open') {
+                                sendCommand({ kind: 'send_act', location: name, device: x.type, value: 'close' });
+                            } 
+                            if (x.value === 'close') {
+                                sendCommand({ kind: 'send_act', location: name, device: x.type, value: 'open' });    
+                            }
+                        }}/>
                     ))}
                 </Split>
             </Split>}

@@ -2,10 +2,11 @@ use std::{
     cmp,
     collections::HashMap,
     io::{BufRead, BufReader},
+    mem,
     net::TcpStream,
     process::{Command, Stdio},
     thread::sleep,
-    time::{Duration, SystemTime}, mem,
+    time::{Duration, SystemTime},
 };
 
 use serde::{Deserialize, Serialize};
@@ -105,7 +106,9 @@ impl State {
                     value,
                     is_sat,
                 } => {
-                    let condition_result = self.check_condition(&location, &device, *value, *operator).unwrap_or(false);
+                    let condition_result = self
+                        .check_condition(&location, &device, *value, *operator)
+                        .unwrap_or(false);
                     if *is_sat != condition_result {
                         *is_sat = condition_result;
                         if *is_sat {
@@ -118,7 +121,13 @@ impl State {
         self.rules = rules;
     }
 
-    fn check_condition(&self, location: &String, device: &String, value: i32, operator: Operator) -> Option<bool> {
+    fn check_condition(
+        &self,
+        location: &String,
+        device: &String,
+        value: i32,
+        operator: Operator,
+    ) -> Option<bool> {
         let location = self.devices.get(location)?;
         let device = location.iter().find(|x| x.name == *device)?;
         let their_value: i32 = device.value.parse().ok()?;
@@ -142,15 +151,34 @@ enum SendMessage<'a> {
 #[serde(tag = "kind")]
 #[serde(rename_all = "snake_case")]
 enum ReceiveMessage {
-    NewRule { rule: Rule, job: Job },
-    DeleteRule { index: usize },
+    SendAct {
+        location: String,
+        device: String,
+        value: String,
+    },
+    NewRule {
+        rule: Rule,
+        job: Job,
+    },
+    DeleteRule {
+        index: usize,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum DeviceKind {
+    Sensor,
+    Actuator,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Device {
     #[serde(rename = "type")]
     name: String,
+    kind: DeviceKind,
     uri: String,
+    ip: String,
     location: String,
     value: String,
 }
@@ -218,7 +246,15 @@ fn main() {
         let device_event: DeviceEvent = serde_json::from_str(&x).unwrap();
         match device_event {
             DeviceEvent::HeartBeat => (),
-            DeviceEvent::NewDevice { value } => {
+            DeviceEvent::NewDevice { mut value } => {
+                if value.kind == DeviceKind::Actuator {
+                    value.value = match value.name.as_str() {
+                        "curtain" => "close",
+                        "outlet" => "off",
+                        _ => "",
+                    }
+                    .to_owned();
+                }
                 state
                     .devices
                     .entry(value.location.clone())
@@ -261,7 +297,24 @@ fn main() {
             }
             ReceiveMessage::DeleteRule { index } => {
                 state.rules.remove(index);
-            },
+            }
+            ReceiveMessage::SendAct {
+                location,
+                device,
+                value,
+            } => {
+                (|| {
+                    let device = state
+                        .devices
+                        .get_mut(&location)?
+                        .iter_mut()
+                        .find(|x| x.name == device)?;
+                    let uri = format!("http://{}:8080{}/{value}", device.ip, device.uri);
+                    device.value = value;
+                    reqwest::blocking::get(uri).unwrap();
+                    Some(())
+                })();
+            }
         }
     }
 }

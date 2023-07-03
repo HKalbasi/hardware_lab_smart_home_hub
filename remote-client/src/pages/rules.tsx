@@ -39,6 +39,7 @@ const NewRuleAdder = () => {
         }} />
         <br/>
         {rule.type === 'timer' && <>
+            چند ثانیه یک بار؟
             <input type='number' value={rule.interval.secs} onChange={(e) => {
                 const ruleClone = { ...rule };
                 ruleClone.interval.secs = Number(e.target.value);
