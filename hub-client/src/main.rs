@@ -69,12 +69,23 @@ enum Rule {
 #[serde(rename_all = "snake_case")]
 enum Job {
     Beep,
+    Actuator { location: String, device: String, act: String }
 }
 
 impl Job {
-    fn do_it(&self) {
+    fn do_it(&self, state: &mut State) {
         match self {
             Job::Beep => println!("\x07"),
+            Job::Actuator { location, device, act } => {
+                let device = state
+                        .devices
+                        .get_mut(&location)?
+                        .iter_mut()
+                        .find(|x| x.name == device)?;
+                let uri = format!("http://{}:8080{}/{act}", device.ip, device.uri);
+                device.value = value;
+                reqwest::blocking::get(uri).unwrap();
+            },
         }
     }
 }
@@ -95,7 +106,7 @@ impl State {
                 } => {
                     if *next < SystemTime::now() {
                         *next = *next + *interval;
-                        job.do_it();
+                        job.do_it(self);
                         *count -= 1;
                     }
                 }
@@ -112,7 +123,7 @@ impl State {
                     if *is_sat != condition_result {
                         *is_sat = condition_result;
                         if *is_sat {
-                            job.do_it();
+                            job.do_it(self);
                         }
                     }
                 }
